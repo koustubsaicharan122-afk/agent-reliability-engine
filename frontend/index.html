@@ -1,0 +1,155 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>AI Agent Evaluation &amp; Reliability Engine</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+<style>
+  body { font-family: 'Inter', ui-sans-serif, system-ui, -apple-system, sans-serif; }
+  .badge { display:inline-flex; align-items:center; padding:2px 10px; border-radius:9999px; font-size:11px; font-weight:600; letter-spacing:.02em; }
+  .mono { font-family: ui-monospace, 'SF Mono', Menlo, monospace; }
+  ::-webkit-scrollbar { width: 8px; height: 8px; }
+  ::-webkit-scrollbar-thumb { background: #334155; border-radius: 4px; }
+  .fade-in { animation: fadeIn .25s ease-out; }
+  @keyframes fadeIn { from { opacity: 0; transform: translateY(4px);} to { opacity:1; transform: translateY(0);} }
+</style>
+</head>
+<body class="bg-slate-950 text-slate-100 min-h-screen">
+
+<div class="max-w-7xl mx-auto px-6 py-8">
+
+  <!-- Header -->
+  <header class="mb-8 flex items-start justify-between gap-4 flex-wrap">
+    <div>
+      <div class="flex items-center gap-3">
+        <div class="w-9 h-9 rounded-lg bg-gradient-to-br from-indigo-500 to-cyan-400 flex items-center justify-center font-bold text-slate-950">R</div>
+        <h1 class="text-xl font-semibold tracking-tight">AI Agent Evaluation &amp; Reliability Engine</h1>
+      </div>
+      <p class="text-sm text-slate-400 mt-1">Continuous integration for autonomous agents — generate adversarial scenarios, run them sandboxed, classify failures, track reliability over time.</p>
+    </div>
+    <div id="health-badge" class="badge bg-slate-800 text-slate-300">checking backend…</div>
+  </header>
+
+  <!-- Agent Under Test -->
+  <section class="mb-6 bg-slate-900/60 border border-slate-800 rounded-xl p-5">
+    <div class="flex items-center justify-between cursor-pointer" id="agent-toggle">
+      <h2 class="text-sm font-semibold text-slate-200 flex items-center gap-2">
+        <span class="badge bg-indigo-500/20 text-indigo-300">Agent under test</span>
+        <span id="agent-name" class="text-slate-400 font-normal"></span>
+      </h2>
+      <span id="agent-chevron" class="text-slate-500 text-xs">show details ▾</span>
+    </div>
+    <div id="agent-details" class="hidden mt-4 grid md:grid-cols-2 gap-4 text-sm">
+      <div>
+        <div class="text-xs uppercase text-slate-500 mb-1">System prompt</div>
+        <pre id="agent-prompt" class="whitespace-pre-wrap bg-slate-950 border border-slate-800 rounded-lg p-3 text-slate-300 text-xs leading-relaxed"></pre>
+      </div>
+      <div>
+        <div class="text-xs uppercase text-slate-500 mb-1">Tools</div>
+        <div id="agent-tools" class="space-y-2"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Controls -->
+  <section class="grid md:grid-cols-2 gap-6 mb-6">
+    <div class="bg-slate-900/60 border border-slate-800 rounded-xl p-5">
+      <h2 class="text-sm font-semibold text-slate-200 mb-3">1 · Scenario Generation Engine</h2>
+      <p class="text-xs text-slate-500 mb-3">Reads the agent's tools + system prompt and generates realistic and adversarial test scenarios (destructive-action pressure, ambiguity, tool-loop bait, hallucination bait, prompt injection, goal drift).</p>
+      <div class="flex items-center gap-2">
+        <input id="num-scenarios" type="number" min="4" max="30" value="12" class="w-20 bg-slate-950 border border-slate-800 rounded-lg px-2 py-1.5 text-sm" />
+        <button id="btn-generate" class="bg-indigo-500 hover:bg-indigo-400 transition text-slate-950 font-semibold text-sm px-4 py-1.5 rounded-lg">Generate scenarios</button>
+        <span id="generate-status" class="text-xs text-slate-500"></span>
+      </div>
+      <div id="scenario-list" class="mt-4 grid gap-2 max-h-72 overflow-y-auto pr-1"></div>
+    </div>
+
+    <div class="bg-slate-900/60 border border-slate-800 rounded-xl p-5">
+      <h2 class="text-sm font-semibold text-slate-200 mb-3">2 · Sandboxed Execution &amp; Scoring</h2>
+      <p class="text-xs text-slate-500 mb-3">Runs the agent against every generated scenario with mocked tools, captures a full trace, classifies failures, and probes destructive-action guardrails.</p>
+      <div class="flex items-center gap-2 flex-wrap">
+        <input id="version-label" type="text" value="v1" placeholder="version label" class="w-28 bg-slate-950 border border-slate-800 rounded-lg px-2 py-1.5 text-sm" />
+        <button id="btn-run" class="bg-emerald-500 hover:bg-emerald-400 transition text-slate-950 font-semibold text-sm px-4 py-1.5 rounded-lg">Run evaluation</button>
+        <span id="run-status" class="text-xs text-slate-500"></span>
+      </div>
+      <div id="run-progress" class="mt-4 hidden">
+        <div class="w-full bg-slate-800 rounded-full h-1.5 overflow-hidden">
+          <div class="bg-emerald-400 h-1.5 animate-pulse w-2/3"></div>
+        </div>
+        <div class="text-xs text-slate-500 mt-2">Executing scenarios against the sandboxed agent and classifying results — this calls the model several times per scenario, so it can take a minute…</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Scorecard -->
+  <section id="scorecard-section" class="hidden mb-6">
+    <div class="bg-slate-900/60 border border-slate-800 rounded-xl p-5">
+      <div class="flex items-center justify-between mb-4">
+        <h2 class="text-sm font-semibold text-slate-200">3 · Reliability Scorecard <span id="scorecard-run-label" class="text-slate-500 font-normal"></span></h2>
+      </div>
+      <div class="grid md:grid-cols-4 gap-4 mb-6">
+        <div class="bg-slate-950 border border-slate-800 rounded-xl p-4">
+          <div class="text-xs text-slate-500 mb-1">Pass rate</div>
+          <div id="sc-pass-rate" class="text-3xl font-bold">—</div>
+        </div>
+        <div class="bg-slate-950 border border-slate-800 rounded-xl p-4">
+          <div class="text-xs text-slate-500 mb-1">Scenarios run</div>
+          <div id="sc-total" class="text-3xl font-bold">—</div>
+        </div>
+        <div class="bg-slate-950 border border-slate-800 rounded-xl p-4">
+          <div class="text-xs text-slate-500 mb-1">Failures</div>
+          <div id="sc-failed" class="text-3xl font-bold text-rose-400">—</div>
+        </div>
+        <div class="bg-slate-950 border rounded-xl p-4" id="sc-guardrail-card">
+          <div class="text-xs text-slate-500 mb-1">Guardrail violations</div>
+          <div id="sc-guardrail" class="text-3xl font-bold">—</div>
+        </div>
+      </div>
+      <div class="grid md:grid-cols-2 gap-6">
+        <div>
+          <div class="text-xs uppercase text-slate-500 mb-2">Failure mode breakdown</div>
+          <canvas id="chart-failure-modes" height="180"></canvas>
+        </div>
+        <div>
+          <div class="text-xs uppercase text-slate-500 mb-2">Pass / fail by scenario category</div>
+          <canvas id="chart-categories" height="180"></canvas>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Regression tracker -->
+  <section id="regression-section" class="hidden mb-6">
+    <div class="bg-slate-900/60 border border-slate-800 rounded-xl p-5">
+      <h2 class="text-sm font-semibold text-slate-200 mb-4">4 · Regression Tracker <span class="text-slate-500 font-normal">— reliability across runs</span></h2>
+      <canvas id="chart-regression" height="90"></canvas>
+      <div id="run-history-table" class="mt-4 text-xs"></div>
+    </div>
+  </section>
+
+  <!-- Results / trace viewer -->
+  <section id="results-section" class="hidden">
+    <div class="bg-slate-900/60 border border-slate-800 rounded-xl p-5">
+      <h2 class="text-sm font-semibold text-slate-200 mb-4">5 · Scenario Results &amp; Replay Traces</h2>
+      <div id="results-list" class="space-y-2"></div>
+    </div>
+  </section>
+
+</div>
+
+<!-- Trace modal -->
+<div id="trace-modal" class="hidden fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-6">
+  <div class="bg-slate-900 border border-slate-700 rounded-xl max-w-3xl w-full max-h-[85vh] overflow-y-auto p-6">
+    <div class="flex items-center justify-between mb-4">
+      <h3 id="modal-title" class="font-semibold text-sm"></h3>
+      <button id="modal-close" class="text-slate-400 hover:text-white text-lg leading-none">&times;</button>
+    </div>
+    <div id="modal-body" class="text-sm space-y-3"></div>
+  </div>
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>
